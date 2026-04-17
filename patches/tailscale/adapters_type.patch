@@ -1,0 +1,10 @@
+--- a/constant/adapters.go
++++ b/constant/adapters.go
+@@ -47,6 +47,7 @@
+ 	Sudoku
+ 	Masque
+ 	TrustTunnel
++	Tailscale
+ )
+ 
+ const (

@@ -1,0 +1,11 @@
+--- a/constant/adapters.go
++++ b/constant/adapters.go
+@@ -218,6 +219,8 @@
+ 		return "Masque"
+ 	case TrustTunnel:
+ 		return "TrustTunnel"
++	case Tailscale:
++		return "Tailscale"
+ 	case Relay:
+ 		return "Relay"
+ 	case Selector:
