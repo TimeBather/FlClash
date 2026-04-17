@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.follow.clash.core"
+    namespace = "cn.timebather.flclash.tailscaled.core"
     compileSdk = libs.versions.compileSdk.get().toInt()
     ndkVersion = libs.versions.ndkVersion.get()
 

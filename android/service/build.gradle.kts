@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.follow.clash.service"
+    namespace = "cn.timebather.flclash.tailscaled.service"
     compileSdk = 36
 
     defaultConfig {
