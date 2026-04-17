@@ -106,19 +106,30 @@ else
 
   if [ "$PATCH_APPLIED" = false ]; then
     echo "      Patches did not apply cleanly, falling back to sed..."
-    # Add Tailscale to the iota enum after TrustTunnel (or after Masque as fallback)
-    if grep -q 'TrustTunnel' "$ADAPTERS_FILE"; then
+    # Add Tailscale to the iota enum after the last known adapter type
+    # Try TrustTunnel first, then Masque, then Sudoku as fallbacks
+    if grep -q 'TrustTunnel$' "$ADAPTERS_FILE"; then
       sed -i '/TrustTunnel$/a\\tTailscale' "$ADAPTERS_FILE"
-    else
+    elif grep -q '^\tMasque$' "$ADAPTERS_FILE"; then
       sed -i '/^\tMasque$/a\\tTailscale' "$ADAPTERS_FILE"
+    elif grep -q '^\tSudoku$' "$ADAPTERS_FILE"; then
+      sed -i '/^\tSudoku$/a\\tTailscale' "$ADAPTERS_FILE"
+    else
+      echo "ERROR: Could not find a known adapter type anchor in adapters.go"
+      exit 1
     fi
     echo "      Added Tailscale to adapter type enum (via sed)."
 
     # Add the String() case for Tailscale
     if grep -q 'return "TrustTunnel"' "$ADAPTERS_FILE"; then
       sed -i '/return "TrustTunnel"/a\\tcase Tailscale:\n\t\treturn "Tailscale"' "$ADAPTERS_FILE"
-    else
+    elif grep -q 'return "Masque"' "$ADAPTERS_FILE"; then
       sed -i '/return "Masque"/a\\tcase Tailscale:\n\t\treturn "Tailscale"' "$ADAPTERS_FILE"
+    elif grep -q 'return "Sudoku"' "$ADAPTERS_FILE"; then
+      sed -i '/return "Sudoku"/a\\tcase Tailscale:\n\t\treturn "Tailscale"' "$ADAPTERS_FILE"
+    else
+      echo "ERROR: Could not find a known adapter type String() anchor in adapters.go"
+      exit 1
     fi
     echo "      Added Tailscale String() case (via sed)."
   fi
@@ -154,13 +165,24 @@ fi
 echo "[5/5] Adding tailscale.com dependency to go.mod ..."
 GOMOD_FILE="$CLASH_META_DIR/go.mod"
 if grep -q 'tailscale.com' "$GOMOD_FILE" 2>/dev/null; then
-  echo "      tailscale.com dependency already present, skipping."
+  echo "      tailscale.com dependency already present in Clash.Meta, skipping."
 else
-  echo "      Running 'go get tailscale.com/tsnet tailscale.com/ipn tailscale.com/tailcfg' ..."
+  echo "      Running 'go get tailscale.com/tsnet tailscale.com/ipn tailscale.com/tailcfg' in Clash.Meta ..."
   (
     cd "$CLASH_META_DIR"
     go get tailscale.com/tsnet tailscale.com/ipn tailscale.com/tailcfg
     go mod tidy
+  )
+  echo "      Done."
+fi
+
+# Also update the outer core/go.mod to pull in transitive dependencies
+echo "      Tidying outer core/go.mod ..."
+CORE_DIR="$REPO_ROOT/core"
+if [ -f "$CORE_DIR/go.mod" ]; then
+  (
+    cd "$CORE_DIR"
+    GOTOOLCHAIN=auto go mod tidy
   )
   echo "      Done."
 fi

@@ -231,17 +231,16 @@ func NewTailscale(option TailscaleOption) (*Tailscale, error) {
 
 	return &Tailscale{
 		Base: NewBase(BaseOption{
-			Name:         option.Name,
-			Addr:         option.Hostname,
-			Type:         C.Tailscale,
-			ProviderName: option.ProviderName,
-			UDP:          true,
-			XUDP:         false,
-			TFO:          option.TFO,
-			MPTCP:        option.MPTCP,
-			Interface:    option.Interface,
-			RoutingMark:  option.RoutingMark,
-			Prefer:       option.IPVersion,
+			Name:        option.Name,
+			Addr:        option.Hostname,
+			Type:        C.Tailscale,
+			UDP:         true,
+			XUDP:        false,
+			TFO:         option.TFO,
+			MPTCP:       option.MPTCP,
+			Interface:   option.Interface,
+			RoutingMark: option.RoutingMark,
+			Prefer:      option.IPVersion,
 		}),
 		option: option,
 	}, nil
