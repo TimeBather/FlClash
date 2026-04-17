@@ -69,16 +69,16 @@ PARSER_FILE="$CLASH_META_DIR/adapter/parser.go"
 if grep -q '"tailscale"' "$PARSER_FILE" 2>/dev/null; then
   echo "      tailscale case already present in parser.go, skipping."
 else
-  # Insert the tailscale case before the 'default:' case, right after the TrustTunnel block
-  # We search for the line 'proxy, err = outbound.NewTrustTunnel' and insert after it
-  if grep -q 'NewTrustTunnel' "$PARSER_FILE"; then
-    sed -i '/proxy, err = outbound\.NewTrustTunnel.*$/a\\tcase "tailscale":\n\t\ttailscaleOption := \&outbound.TailscaleOption{BasicOption: basicOption}\n\t\terr = decoder.Decode(mapping, tailscaleOption)\n\t\tif err != nil {\n\t\t\tbreak\n\t\t}\n\t\tproxy, err = outbound.NewTailscale(*tailscaleOption)' "$PARSER_FILE"
-    echo "      Done."
+  # Try applying the unified diff patch first
+  if patch -p1 -d "$CLASH_META_DIR" --dry-run < "$SCRIPT_DIR/parser.patch" >/dev/null 2>&1; then
+    patch -p1 -d "$CLASH_META_DIR" < "$SCRIPT_DIR/parser.patch"
+    echo "      Done (applied via patch)."
   else
-    echo "WARNING: Could not find TrustTunnel anchor in parser.go."
-    echo "         Attempting to insert before 'default:' case..."
+    # Fallback: insert before the 'default:' case using sed
+    echo "      Patch did not apply cleanly, falling back to sed..."
+    # Find the line with 'default:' in the proxy switch block and insert before it
     sed -i '/^\tdefault:$/i\\tcase "tailscale":\n\t\ttailscaleOption := \&outbound.TailscaleOption{BasicOption: basicOption}\n\t\terr = decoder.Decode(mapping, tailscaleOption)\n\t\tif err != nil {\n\t\t\tbreak\n\t\t}\n\t\tproxy, err = outbound.NewTailscale(*tailscaleOption)' "$PARSER_FILE"
-    echo "      Done (inserted before default case)."
+    echo "      Done (inserted before default case via sed)."
   fi
 fi
 
@@ -90,26 +90,37 @@ ADAPTERS_FILE="$CLASH_META_DIR/constant/adapters.go"
 if grep -q 'Tailscale' "$ADAPTERS_FILE" 2>/dev/null; then
   echo "      Tailscale constant already present, skipping."
 else
-  # Add Tailscale to the iota enum after TrustTunnel
-  if grep -q 'TrustTunnel' "$ADAPTERS_FILE"; then
-    sed -i '/TrustTunnel$/a\\tTailscale' "$ADAPTERS_FILE"
-    echo "      Added Tailscale to adapter type enum."
-  else
-    echo "WARNING: Could not find TrustTunnel in adapters.go enum."
-    echo "         Trying to add before closing parenthesis of enum block..."
-    # Fallback: add before the closing paren that follows the Masque/Sudoku lines
-    sed -i '/^\tMasque$/a\\tTailscale' "$ADAPTERS_FILE"
-    echo "      Added Tailscale after Masque."
+  # Try applying the unified diff patches first
+  PATCH_APPLIED=false
+  if patch -p1 -d "$CLASH_META_DIR" --dry-run < "$SCRIPT_DIR/adapters_type.patch" >/dev/null 2>&1; then
+    patch -p1 -d "$CLASH_META_DIR" < "$SCRIPT_DIR/adapters_type.patch"
+    echo "      Added Tailscale to adapter type enum (via patch)."
+    PATCH_APPLIED=true
   fi
 
-  # Add the String() case for Tailscale
-  if grep -q 'return "TrustTunnel"' "$ADAPTERS_FILE"; then
-    sed -i '/return "TrustTunnel"/a\\tcase Tailscale:\n\t\treturn "Tailscale"' "$ADAPTERS_FILE"
-    echo "      Added Tailscale String() case."
-  else
-    echo "WARNING: Could not find TrustTunnel String() case."
-    sed -i '/return "Masque"/a\\tcase Tailscale:\n\t\treturn "Tailscale"' "$ADAPTERS_FILE"
-    echo "      Added Tailscale String() after Masque."
+  if patch -p1 -d "$CLASH_META_DIR" --dry-run < "$SCRIPT_DIR/adapters_string.patch" >/dev/null 2>&1; then
+    patch -p1 -d "$CLASH_META_DIR" < "$SCRIPT_DIR/adapters_string.patch"
+    echo "      Added Tailscale String() case (via patch)."
+    PATCH_APPLIED=true
+  fi
+
+  if [ "$PATCH_APPLIED" = false ]; then
+    echo "      Patches did not apply cleanly, falling back to sed..."
+    # Add Tailscale to the iota enum after TrustTunnel (or after Masque as fallback)
+    if grep -q 'TrustTunnel' "$ADAPTERS_FILE"; then
+      sed -i '/TrustTunnel$/a\\tTailscale' "$ADAPTERS_FILE"
+    else
+      sed -i '/^\tMasque$/a\\tTailscale' "$ADAPTERS_FILE"
+    fi
+    echo "      Added Tailscale to adapter type enum (via sed)."
+
+    # Add the String() case for Tailscale
+    if grep -q 'return "TrustTunnel"' "$ADAPTERS_FILE"; then
+      sed -i '/return "TrustTunnel"/a\\tcase Tailscale:\n\t\treturn "Tailscale"' "$ADAPTERS_FILE"
+    else
+      sed -i '/return "Masque"/a\\tcase Tailscale:\n\t\treturn "Tailscale"' "$ADAPTERS_FILE"
+    fi
+    echo "      Added Tailscale String() case (via sed)."
   fi
 fi
 
@@ -124,9 +135,16 @@ else
   if grep -q 'type: tailscale' "$DOCS_CONFIG" 2>/dev/null; then
     echo "      Tailscale config example already present, skipping."
   else
-    # Insert tailscale example before the masque section
-    sed -i '/# masque/i\  # tailscale\n  - name: "tailscale"\n    type: tailscale\n    hostname: "my-exit-node"             # Required: target hostname in Tailscale network\n    # authkey: "tskey-auth-xxxxx"        # Optional: auth key, needed for first connection\n    # control-url: "https://controlplane.tailscale.com" # Optional: control server URL (for self-hosted Headscale etc.)\n    # ephemeral: false                   # Optional: use ephemeral node mode\n    # state-dir: "/path/to/state"        # Optional: state directory, default ~\/.config\/mihomo\/tailscale\/{name} (desktop) or {mihomo-home}\/tailscale\/{name} (Android)\n    # udp: true                          # Supports UDP\n    # ip-version: dual                   # Optional: ipv4\/ipv6\/dual\n    # accept-routes: true                # Optional: accept all routes\n    # exit-node: "my-exit-node"          # Optional: specify exit node (IP or StableNodeID)\n' "$DOCS_CONFIG"
-    echo "      Done."
+    # Try applying the unified diff patch first
+    if patch -p1 -d "$CLASH_META_DIR" --dry-run < "$SCRIPT_DIR/config_docs.patch" >/dev/null 2>&1; then
+      patch -p1 -d "$CLASH_META_DIR" < "$SCRIPT_DIR/config_docs.patch"
+      echo "      Done (applied via patch)."
+    else
+      echo "      Patch did not apply cleanly, falling back to sed..."
+      # Insert tailscale example before the masque section
+      sed -i '/# masque/i\  # tailscale\n  - name: "tailscale"\n    type: tailscale\n    hostname: "my-exit-node"\n    # authkey: "tskey-auth-xxxxx"\n    # control-url: "https://controlplane.tailscale.com"\n    # ephemeral: false\n    # state-dir: "/path/to/state"\n    # udp: true\n    # ip-version: dual\n    # accept-routes: true\n    # exit-node: "my-exit-node"\n' "$DOCS_CONFIG"
+      echo "      Done (inserted via sed)."
+    fi
   fi
 fi
 
